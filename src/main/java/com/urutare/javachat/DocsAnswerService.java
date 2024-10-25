@@ -2,6 +2,7 @@ package com.urutare.javachat;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.urutare.javachat.customTools.GlobalAgent;
 import dev.langchain4j.data.document.Metadata;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
@@ -34,7 +35,7 @@ public class DocsAnswerService {
     private EmbeddingModel embeddingModel;
     private EmbeddingStore<TextSegment> embeddingStore;
     private OpenAiStreamingChatModel chatModel;
-
+    private GlobalAgent globalAgent;
     public DocsAnswerService() {
 
     }
@@ -43,11 +44,14 @@ public class DocsAnswerService {
         action.appendAnswer("Initiating...");
         var contentSections = loadJson(action);
         initChat(action, contentSections);
+        globalAgent = new GlobalAgent();
+        System.out.println("Global agent is created");
+        System.out.println(globalAgent.searchWeb("What is the capital of Rwanda?"));
     }
 
     private List<ContentSection> loadJson(SearchAction action) {
         try {
-            URL fileUrl = DocsAnswerService.class.getResource("docs_index.json");
+            URL fileUrl = DocsAnswerService.class.getResource("bms.actions.json");
             if (fileUrl == null) {
                 action.appendAnswer("\nCould not find the JSON file", true);
                 return new ArrayList<>();
@@ -64,21 +68,38 @@ public class DocsAnswerService {
         return new ArrayList<>();
     }
 
+    private Metadata createMetadataFromContentSection(ContentSection contentSection) {
+        HashMap<String, Object> metadataMap = new HashMap<>();
+        metadataMap.put("ID", contentSection.id() != null ? contentSection.id() : "No id found");
+        metadataMap.put("ACTION_ID", contentSection.actionId() != null ? contentSection.actionId() : "no action id found");
+        metadataMap.put("DATA", contentSection.dataWrapper()!= null ? "" + contentSection.dataWrapper().getData() : "no data found");
+        metadataMap.put("DATE", contentSection.date() != null ? contentSection.date() : "no date found");
+        metadataMap.put("NAME", contentSection.name() != null ? contentSection.name() : "no name found");
+        metadataMap.put("STATUS", contentSection.status() != null ? contentSection.status() : "no status found");
+        return new Metadata(metadataMap);
+    }
+
     private void initChat(SearchAction action, List<ContentSection> contentSections) {
         List<TextSegment> textSegments = new ArrayList<>();
-        for (var contentSection : contentSections.stream().filter(c -> !c.content().isEmpty()).toList()) {
-            Map<String, String> metadataMap = new HashMap<>();
-            metadataMap.put("OBJECT_ID", contentSection.objectID().toString());
-            metadataMap.put("LINK", contentSection.link());
-            metadataMap.put("GROUP_ID", contentSection.groupId());
-            textSegments.add(TextSegment.from(contentSection.content(), Metadata.from(metadataMap)));
+        for (var contentSection : contentSections.stream().toList()) {
+            Metadata metadata = createMetadataFromContentSection(contentSection);
+//            System.out.println("Metadata: " + metadata);
+
+            String actionId = contentSection.actionId();
+            if (actionId != null && !actionId.isBlank()) {
+                textSegments.add(new TextSegment(actionId, metadata));
+            } else {
+                LOGGER.warn("Skipping ContentSection with null or blank actionId");
+            }
         }
+
         action.appendAnswer("\nConverted to number of text segments: " + textSegments.size());
 
         embeddingModel = new AllMiniLmL6V2QuantizedEmbeddingModel();
         embeddingStore = new InMemoryEmbeddingStore<>();
         action.appendAnswer("\nEmbedding store is created: " + textSegments.size());
-
+        System.out.println("Embedding store is created: " + textSegments.size());
+        System.out.println("text segments: " + textSegments);
         List<Embedding> embeddings = embeddingModel.embedAll(textSegments).content();
         action.appendAnswer("\nNumber of embeddings: " + embeddings.size());
 
@@ -109,38 +130,36 @@ public class DocsAnswerService {
 
         relevantEmbeddings.stream().map(EmbeddingMatch::embedded).toList()
                 .forEach(ts -> Platform.runLater(() -> {
-                    LOGGER.info("Adding link: {}", ts.metadata("LINK"));
-                    action.appendRelatedLink(ts.metadata("LINK"));
+                    LOGGER.info("Related data: {}", ts.metadata());
+                    action.appendRelatedLink("ID: " + ts.metadata("ID"));
                 }));
 
         // Create a prompt for the model that includes question and relevant embeddings
-        PromptTemplate promptTemplate = PromptTemplate.from(relevantEmbeddings.isEmpty() ?
+        PromptTemplate promptTemplate = PromptTemplate.from(
                 """
-                        The user asked the following question:
-                            {{question}}
-                                      \s
-                        Unfortunately our documentation doesn't seem to contain any content related to this question.
-                        Please reply in a polite way and ask the user to contact Azul support if they need more assistance.
-                        Tell the user to use the following link: https://www.azul.com/contact/
-                       \s""" :
-                """
-                        Answer the following question to the best of your ability:
-                            {{question}}
-                                      \s
-                        Base your answer on these relevant parts of the documentation:
-                            {{information}}
-                           \s
-                        Do not provide any additional information.
-                        Do not provide answers about other programming languages, but write "Sorry, that's a question I can't answer".
-                        Do not generate source code, but write "Sorry, that's a question I can't answer".
-                        If the answer cannot be found in the documents, write "Sorry, I could not find an answer to your question in our docs".
-                       \s""");
+                Answer the following question to the best of your ability:
+                    {{question}}
+                
+                Base your answer on these relevant actions from the logs:
+                    {{information}}
+                
+                Follow these steps:
+                1. If you can answer the question using the provided logs, do so.
+                2. If you cannot find a direct answer in the logs, clearly state that you need to search for more information.
+                3. When you need to search, write: "[SEARCH REQUIRED]" at the end of your response.
+                
+                Always provide a clear and concise answer, citing your sources (logs or web search).
+                """);
 
         String information = relevantEmbeddings.stream()
-                .map(match -> match.embedded().text()
-                        + ". LINK: " + match.embedded().metadata("LINK")
-                        + ". GROUP_ID: " + match.embedded().metadata("GROUP_ID"))
-                .collect(Collectors.joining("\n\n"));
+    .map(match -> match.embedded().text()
+            + ". ACTION_ID: " + match.embedded().metadata("ACTION_ID")
+        + ". ID: " + match.embedded().metadata("ID")
+        + ". NAME: " + match.embedded().metadata("NAME")
+        + ". DATE: " + match.embedded().metadata("DATE")
+            + ". DATA: " + match.embedded().metadata("DATA")
+        + ". STATUS: " + match.embedded().metadata("STATUS"))
+    .collect(Collectors.joining("\n\n"));
         information = truncateToFitTokenLimit(information, MAX_TOKENS-1000);
         Map<String, Object> variables = new HashMap<>();
         variables.put("question", action.getQuestion());
@@ -149,7 +168,7 @@ public class DocsAnswerService {
         Prompt prompt = promptTemplate.apply(variables);
 
         if (chatModel != null) {
-            chatModel.generate(prompt.toUserMessage().toString(), new CustomStreamingResponseHandler(action));
+            chatModel.generate(prompt.toUserMessage().toString(), new CustomStreamingResponseHandler(action,globalAgent));
         } else {
             action.appendAnswer("The chat model is not ready yet... Please try again later.", true);
         }
@@ -162,4 +181,5 @@ public class DocsAnswerService {
         }
         return String.join(" ", Arrays.copyOf(tokens, maxTokens));
     }
+
 }

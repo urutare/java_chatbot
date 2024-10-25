@@ -1,5 +1,6 @@
 package com.urutare.javachat;
 
+import com.urutare.javachat.customTools.GlobalAgent;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.model.StreamingResponseHandler;
 import dev.langchain4j.model.output.Response;
@@ -10,9 +11,10 @@ public class CustomStreamingResponseHandler implements StreamingResponseHandler<
     private static final Logger LOGGER = LogManager.getLogger(CustomStreamingResponseHandler.class);
 
     private final SearchAction action;
-
-    public CustomStreamingResponseHandler(SearchAction action) {
+    private final GlobalAgent globalAgent;
+    public CustomStreamingResponseHandler(SearchAction action, GlobalAgent globalAgent) {
         this.action = action;
+        this.globalAgent = globalAgent;
     }
 
     @Override
@@ -22,6 +24,10 @@ public class CustomStreamingResponseHandler implements StreamingResponseHandler<
 
     @Override
     public void onComplete(Response<AiMessage> response) {
+        LOGGER.info("Answer is complete for '{}', size: {}", action.getQuestion(), action.getAnswer().length());
+        if (!action.getAnswer().isEmpty()) {
+            action.appendAnswer(String.valueOf(globalAgent.searchWeb(action.getQuestion()).getFirst()));
+        }
         action.appendAnswer("\n\nAnswer is complete for '" + action.getQuestion() + "', size: "
                 + action.getAnswer().length(), true);
     }
