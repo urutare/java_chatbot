@@ -72,4 +72,7 @@ public class SearchAction {
             }
         });
     }
+    public boolean isComplete() {
+        return finished.get();
+    }
 }

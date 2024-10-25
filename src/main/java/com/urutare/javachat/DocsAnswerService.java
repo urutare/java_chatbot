@@ -113,7 +113,9 @@ public class DocsAnswerService {
                 // gpt-4-1106-preview --> more expensive to use
                 // gpt-4
                 // gpt-3.5-turbo-1106
-                .modelName("gpt-4")
+                .modelName("gpt-3.5-turbo-1106")
+                .logRequests(true)
+                .logResponses(true)
                 .build();
         action.appendAnswer("\nChat model is ready", true);
     }
@@ -134,21 +136,48 @@ public class DocsAnswerService {
                     action.appendRelatedLink("ID: " + ts.metadata("ID"));
                 }));
 
-        // Create a prompt for the model that includes question and relevant embeddings
-        PromptTemplate promptTemplate = PromptTemplate.from(
+        PromptTemplate unifiedPromptTemplate = PromptTemplate.from(
                 """
-                Answer the following question to the best of your ability:
-                    {{question}}
-                
-                Base your answer on these relevant actions from the logs:
-                    {{information}}
-                
+                Answer the following question or perform the requested task:
+                {{question}}
+            
+                Base your answer on these relevant actions from the logs if available:
+                {{information}}
+            
                 Follow these steps:
-                1. If you can answer the question using the provided logs, do so.
-                2. If you cannot find a direct answer in the logs, clearly state that you need to search for more information.
-                3. When you need to search, write: "[SEARCH REQUIRED]" at the end of your response.
-                
-                Always provide a clear and concise answer, citing your sources (logs or web search).
+                1. Determine if the input is a casual greeting, a general question, or a specific task.
+                   - If it's a greeting, respond with a polite and friendly greeting.
+                   - If it's a general question, provide a clear and concise answer. Remember to be polite.
+            
+                2. If it's a specific task, identify the type (question answering, label suggestion, translation, or web search).
+            
+                3. If it's a label or tags suggestion task:
+                   a. Identify the product name and tell if it is english word.
+                   b. Check if product name is in english, if not, translate it to english. That's task 4.
+                   c. Otherwise, write "[PRODUCT NAME]" followed by the product name.
+                   d. Suggest 5 relevant labels or tags for the product, even if there's no information in the logs.
+                   e. Provide only the labels, one per line, without numbering or additional text.
+            
+                4. If it's a translation task:
+                   a. Identify the text to be translated, particularly the product name.
+                   b. Write "[TRANSLATE]" followed by the text to be translated.
+                   c. Go back to step 3.
+            
+                5. If it's a web search task:
+                   a. Identify the search query.
+                   b. Write "[WEB SEARCH REQUIRED]" followed by the search query.
+            
+                6. For any other type of question:
+                   a. If you can answer using the provided information, do so.
+                   b. If you need more information, write "[ADDITIONAL INFO REQUIRED]" at the end of your response.
+            
+                7. If you couldn't find the answer or there's no relevant information in the logs:
+                   a. Reply politely explaining that you don't have relevant information to answer the question.
+                   b. Suggest contacting Urutare Tech solutions support for more assistance.
+                   c. Provide the following link: https://www.uruware.rw/contact-us
+            
+                Always provide a clear and concise answer. Do not explain the steps you're following.
+                For label suggestions, always provide labels even if there's no relevant information in the logs.
                 """);
 
         String information = relevantEmbeddings.stream()
@@ -163,9 +192,9 @@ public class DocsAnswerService {
         information = truncateToFitTokenLimit(information, MAX_TOKENS-1000);
         Map<String, Object> variables = new HashMap<>();
         variables.put("question", action.getQuestion());
-        variables.put("information", information);
+        variables.put("information", information.isEmpty() ? "No relevant information found in the logs." : information);
 
-        Prompt prompt = promptTemplate.apply(variables);
+        Prompt prompt = unifiedPromptTemplate.apply(variables);
 
         if (chatModel != null) {
             chatModel.generate(prompt.toUserMessage().toString(), new CustomStreamingResponseHandler(action,globalAgent));

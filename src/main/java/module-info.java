@@ -16,9 +16,12 @@ module com.urutare.javachat {
     requires static lombok;
     requires retrofit2.converter.jackson;
     requires kotlin.stdlib;
+    requires google.cloud.translate;
+    requires google.cloud.core;
     opens com.urutare.javachat to javafx.fxml, com.fasterxml.jackson.databind;
     opens com.urutare.javachat.search to com.fasterxml.jackson.databind;
     exports com.urutare.javachat;
+
     exports com.urutare.javachat.customTools;
 
 }
