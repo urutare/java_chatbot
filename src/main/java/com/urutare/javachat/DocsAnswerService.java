@@ -143,6 +143,9 @@ public class DocsAnswerService {
             
                 Base your answer on these relevant actions from the logs if available:
                 {{information}}
+                
+                Previous conversation context:
+                            {{context}}
             
                 Follow these steps:
                 1. Determine if the input is a casual greeting, a general question, or a specific task.
@@ -150,7 +153,7 @@ public class DocsAnswerService {
                    - If it's a general question, provide a clear and concise answer. Remember to be polite.
             
                 2. If it's a specific task, identify the type (question answering, label suggestion, translation, or web search).
-            
+                    You may refer to the conversation history and context for more information if available and necessary.
                 3. If it's a label or tags suggestion task:
                    a. Identify the product name and tell if it is english word.
                    b. Check if product name is in english, if not, translate it to english. That's task 4.
@@ -193,11 +196,18 @@ public class DocsAnswerService {
         Map<String, Object> variables = new HashMap<>();
         variables.put("question", action.getQuestion());
         variables.put("information", information.isEmpty() ? "No relevant information found in the logs." : information);
+        // Add conversation history and current context
+        String context = String.join("\n", CustomStreamingResponseHandler.getConversationHistory());
+        if (!CustomStreamingResponseHandler.getCurrentContext().isEmpty()) {
+            context += "\nCurrent context: " + CustomStreamingResponseHandler.getCurrentContext();
+        }
+        variables.put("context", context);
 
         Prompt prompt = unifiedPromptTemplate.apply(variables);
 
         if (chatModel != null) {
-            chatModel.generate(prompt.toUserMessage().toString(), new CustomStreamingResponseHandler(action,globalAgent));
+            CustomStreamingResponseHandler responseHandler = new CustomStreamingResponseHandler(action, globalAgent);
+            chatModel.generate(prompt.toUserMessage().toString(), responseHandler);
         } else {
             action.appendAnswer("The chat model is not ready yet... Please try again later.", true);
         }

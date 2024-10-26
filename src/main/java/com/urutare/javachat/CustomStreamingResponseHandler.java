@@ -5,9 +5,11 @@ import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.model.StreamingResponseHandler;
 import dev.langchain4j.model.output.Response;
 import dev.langchain4j.web.search.WebSearchOrganicResult;
+import lombok.Getter;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
@@ -21,6 +23,8 @@ public class CustomStreamingResponseHandler implements StreamingResponseHandler<
     private final AtomicBoolean isCompleted = new AtomicBoolean(false);
     private final ReentrantLock lock = new ReentrantLock();
 
+    public static final List<String> conversationHistory = new ArrayList<>();
+    private static String currentContext = "";
     public CustomStreamingResponseHandler(SearchAction action, GlobalAgent globalAgent) {
         this.action = action;
         this.globalAgent = globalAgent;
@@ -31,7 +35,6 @@ public class CustomStreamingResponseHandler implements StreamingResponseHandler<
         lock.lock();
         try {
             responseBuilder.append(token);
-//            action.appendAnswer(token, false);
         } finally {
             lock.unlock();
         }
@@ -49,6 +52,9 @@ public class CustomStreamingResponseHandler implements StreamingResponseHandler<
             LOGGER.info("Complete answer: {}", completeAnswer);
             System.out.println("Complete answer: " + completeAnswer);
 
+            // Add the complete answer to the conversation history
+            conversationHistory.add(completeAnswer);
+
             if (completeAnswer.contains("[TRANSLATE]")) {
                 String productName = extractContentAfterTag(completeAnswer, "[TRANSLATE]");
                 String detectedLanguage = globalAgent.detectLanguage(productName);
@@ -61,6 +67,9 @@ public class CustomStreamingResponseHandler implements StreamingResponseHandler<
                 String detectedLanguage = globalAgent.detectLanguage(productName);
                 String translatedName = globalAgent.translateToEnglish(productName, detectedLanguage);
                 action.appendAnswer("\nTranslated product name: " + translatedName + "\n", false);
+            }
+            if (completeAnswer.contains("[PRODUCT NAME]") || completeAnswer.contains("Suggested labels for")) {
+                currentContext = "tag_suggestion";
             }
 
             if (completeAnswer.contains("[WEB SEARCH REQUIRED]") || completeAnswer.contains("[ADDITIONAL INFO REQUIRED]")) {
@@ -78,7 +87,7 @@ public class CustomStreamingResponseHandler implements StreamingResponseHandler<
                 }
             }
 
-            action.appendAnswer( completeAnswer, true);
+            action.appendAnswer(completeAnswer, true);
         } finally {
             lock.unlock();
         }
@@ -90,6 +99,17 @@ public class CustomStreamingResponseHandler implements StreamingResponseHandler<
         return (endIndex == -1) ? text.substring(startIndex).trim() : text.substring(startIndex, endIndex).trim();
     }
 
+    public static List<String> getConversationHistory() {
+        return new ArrayList<>(conversationHistory);
+    }
+
+    public static String getCurrentContext() {
+        return currentContext;
+    }
+
+    public static void clearContext() {
+        currentContext = "";
+    }
     @Override
     public void onError(Throwable error) {
         LOGGER.error("Error while receiving answer: {}", error.getMessage(), error);
