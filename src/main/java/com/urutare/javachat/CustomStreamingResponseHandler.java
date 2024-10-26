@@ -61,7 +61,6 @@ public class CustomStreamingResponseHandler implements StreamingResponseHandler<
                 String detectedLanguage = globalAgent.detectLanguage(productName);
                 String translatedName = globalAgent.translateToEnglish(productName, detectedLanguage);
                 action.appendAnswer("\nTranslated product name: " + translatedName + "\n", false);
-
             }
 
             if (completeAnswer.contains("[WEB SEARCH REQUIRED]") || completeAnswer.contains("[ADDITIONAL INFO REQUIRED]")) {

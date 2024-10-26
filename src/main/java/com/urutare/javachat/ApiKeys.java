@@ -8,6 +8,7 @@ public class ApiKeys {
 
     public static final String OPENAI_API_KEY;
     public static final String TAVILY_API_KEY;
+    public static final String GOOGLE_API_KEY;
 
     static {
         Properties properties = new Properties();
@@ -21,5 +22,6 @@ public class ApiKeys {
         }
         OPENAI_API_KEY = properties.getProperty("OPENAI_API_KEY");
         TAVILY_API_KEY = properties.getProperty("TAVILY_API_KEY");
+        GOOGLE_API_KEY = properties.getProperty("GOOGLE_API_KEY");
     }
 }

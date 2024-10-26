@@ -1,33 +1,31 @@
 package com.urutare.javachat.customTools;
-import com.google.cloud.translate.Detection;
+
 import com.google.cloud.translate.Translate;
 import com.google.cloud.translate.TranslateOptions;
 import com.google.cloud.translate.Translation;
+import com.google.cloud.translate.Translate.TranslateOption;
 
 public class TranslationTool {
     private final Translate translate;
-    public TranslationTool() {
-        translate = TranslateOptions.getDefaultInstance().getService();
+
+    public TranslationTool(String apiKey) {
+        this.translate = TranslateOptions.newBuilder().setApiKey(apiKey).build().getService();
+
     }
+
+    public String detectLanguage(String text) {
+        return translate.detect(text).getLanguage();
+    }
+
     public String translateToEnglish(String text, String sourceLanguage) {
-        try{
-            if(sourceLanguage.equals("en")) {
-                return text;
-            }
-            Translation translation = translate.translate(
-                    text,
-                    Translate.TranslateOption.sourceLanguage(sourceLanguage),
-                    Translate.TranslateOption.targetLanguage("en")
-            );
-            return translation.getTranslatedText();
-        }
-        catch (Exception e) {
-            System.err.println("Error translating text: " + text);
+        if ("en".equals(sourceLanguage)) {
             return text;
         }
-    }
-    public String detectLanguage(String text) {
-        Detection detection = translate.detect(text);
-        return detection.getLanguage();
+        Translation translation = translate.translate(
+                text,
+                TranslateOption.sourceLanguage(sourceLanguage),
+                TranslateOption.targetLanguage("en")
+        );
+        return translation.getTranslatedText();
     }
 }
