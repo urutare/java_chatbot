@@ -145,7 +145,7 @@ public class DocsAnswerService {
                 {{information}}
                 
                 Previous conversation context:
-                            {{context}}
+                {{context}}
             
                 Follow these steps:
                 1. Determine if the input is a casual greeting, a general question, or a specific task.
@@ -154,17 +154,20 @@ public class DocsAnswerService {
             
                 2. If it's a specific task, identify the type (question answering, label suggestion, translation, or web search).
                     You may refer to the conversation history and context for more information if available and necessary.
+            
                 3. If it's a label or tags suggestion task:
-                   a. Identify the product name and tell if it is english word.
-                   b. Check if product name is in english, if not, translate it to english. That's task 4.
-                   c. Otherwise, write "[PRODUCT NAME]" followed by the product name.
+                   a. Identify the product name.
+                   b. Determine if the product name is in English. If it's not in English, write "[TRANSLATE]" followed by the product name.
+                   c. If the product name is in English or after translation, write "[PRODUCT NAME]" followed by the product name.
                    d. Suggest 5 relevant labels or tags for the product, even if there's no information in the logs.
                    e. Provide only the labels, one per line, without numbering or additional text.
+                   f. Enclose the list of labels within [LABELS_START] and [LABELS_END] tags.
+           
             
                 4. If it's a translation task:
                    a. Identify the text to be translated, particularly the product name.
                    b. Write "[TRANSLATE]" followed by the text to be translated.
-                   c. Go back to step 3.
+                   c. After translation, proceed with label suggestion as in step 3.
             
                 5. If it's a web search task:
                    a. Identify the search query.

@@ -27,4 +27,8 @@ public class GlobalAgent {
     public String translateToEnglish(String text, String sourceLanguage) {
         return translationTool.translateToEnglish(text, sourceLanguage);
     }
+
+    public String translateFromEnglish(String label, String originalLanguage) {
+        return translationTool.translateFromEnglish(label, originalLanguage);
+    }
 }

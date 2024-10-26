@@ -10,9 +10,11 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.stream.Collectors;
 
 public class CustomStreamingResponseHandler implements StreamingResponseHandler<AiMessage> {
     private static final Logger LOGGER = LogManager.getLogger(CustomStreamingResponseHandler.class);
@@ -24,6 +26,10 @@ public class CustomStreamingResponseHandler implements StreamingResponseHandler<
     private final ReentrantLock lock = new ReentrantLock();
 
     public static final List<String> conversationHistory = new ArrayList<>();
+    @Getter
+    private List<String> suggestedLabels = new ArrayList<>();
+
+    @Getter
     private static String currentContext = "";
     public CustomStreamingResponseHandler(SearchAction action, GlobalAgent globalAgent) {
         this.action = action;
@@ -54,22 +60,46 @@ public class CustomStreamingResponseHandler implements StreamingResponseHandler<
 
             // Add the complete answer to the conversation history
             conversationHistory.add(completeAnswer);
+            String originalLanguage = null;
+            String productName = null;
 
             if (completeAnswer.contains("[TRANSLATE]")) {
-                String productName = extractContentAfterTag(completeAnswer, "[TRANSLATE]");
+                System.out.println("Translating product name");
+                productName = extractContentAfterTag(completeAnswer, "[TRANSLATE]");
                 String detectedLanguage = globalAgent.detectLanguage(productName);
+                originalLanguage = detectedLanguage;
                 String translatedName = globalAgent.translateToEnglish(productName, detectedLanguage);
                 action.appendAnswer("\nTranslated product name: " + translatedName + "\n", false);
             }
             if (completeAnswer.contains("[PRODUCT NAME]")) {
-                String productName = extractContentAfterTag(completeAnswer, "[PRODUCT NAME]");
+                productName = extractContentAfterTag(completeAnswer, "[PRODUCT NAME]");
                 System.out.println("Product name: " + productName);
                 String detectedLanguage = globalAgent.detectLanguage(productName);
+                originalLanguage = detectedLanguage;
                 String translatedName = globalAgent.translateToEnglish(productName, detectedLanguage);
                 action.appendAnswer("\nTranslated product name: " + translatedName + "\n", false);
             }
             if (completeAnswer.contains("[PRODUCT NAME]") || completeAnswer.contains("Suggested labels for")) {
                 currentContext = "tag_suggestion";
+            }
+            if (completeAnswer.contains("[LABELS_START]")) {
+                System.out.println("Logging suggested labels");
+                suggestedLabels = extractLabels(completeAnswer);
+                for (String label : suggestedLabels) {
+                    System.out.println("Suggested label: " + label);
+                }
+                System.out.println("the detected language is: " + originalLanguage);
+                if (originalLanguage != null && !originalLanguage.equals("en")) {
+                    List<String> translatedLabels = new ArrayList<>();
+                    for (String label : suggestedLabels) {
+                        String translatedLabel = globalAgent.translateFromEnglish(label, originalLanguage);
+                        translatedLabels.add(translatedLabel);
+                    }
+                    suggestedLabels = translatedLabels;
+                    System.out.println("Translated labels: " + translatedLabels);
+                } else {
+                    System.out.println("No translation needed");
+                }
             }
 
             if (completeAnswer.contains("[WEB SEARCH REQUIRED]") || completeAnswer.contains("[ADDITIONAL INFO REQUIRED]")) {
@@ -103,9 +133,30 @@ public class CustomStreamingResponseHandler implements StreamingResponseHandler<
         return new ArrayList<>(conversationHistory);
     }
 
-    public static String getCurrentContext() {
-        return currentContext;
+   private List<String> extractLabels(String text) {
+    List<String> labels = new ArrayList<>();
+    int start = text.indexOf("[LABELS_START]");
+    int end = text.indexOf("[LABELS_END]");
+
+    if (start != -1 && end != -1 && start < end) {
+        String labelsText = text.substring(start + "[LABELS_START]".length(), end).trim();
+        labels = Arrays.stream(labelsText.split("\n"))
+                .map(String::trim)
+                .filter(label -> !label.matches(".*\\d.*") || label.matches("^\\d+\\.\\s+.*") || label.startsWith("- "))
+                .map(label -> {
+                    if (label.matches("^\\d+\\.\\s+.*")) {
+                        return label.replaceFirst("^\\d+\\.\\s+", "");
+                    } else if (label.startsWith("- ")) {
+                        return label.substring(2).trim();
+                    } else {
+                        return label;
+                    }
+                })
+                .collect(Collectors.toList());
     }
+    return labels;
+}
+
 
     public static void clearContext() {
         currentContext = "";

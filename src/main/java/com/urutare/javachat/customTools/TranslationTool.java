@@ -28,4 +28,16 @@ public class TranslationTool {
         );
         return translation.getTranslatedText();
     }
+
+    public String translateFromEnglish(String label, String originalLanguage) {
+        if ("en".equals(originalLanguage)) {
+            return label;
+        }
+        Translation translation = translate.translate(
+                label,
+                TranslateOption.sourceLanguage("en"),
+                TranslateOption.targetLanguage(originalLanguage)
+        );
+        return translation.getTranslatedText();
+    }
 }
